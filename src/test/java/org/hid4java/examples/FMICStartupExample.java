@@ -50,12 +50,12 @@ import java.security.SecureRandom;
  * Use the following command to try it out:
  * <br>
  * <code>
- * mvn clean test exec:java -Dexec.classpathScope="test" -Dexec.mainClass="org.hid4java.examples.Fido2AuthenticationExample"
+ * mvn clean test exec:java -Dexec.classpathScope="test" -Dexec.mainClass="org.hid4java.examples.FMICStartupExample"
  * </code>
  *
  * @since 0.8.0
  */
-public class Fido2AuthenticationExample extends BaseExample {
+public class FMICStartupExample extends BaseExample {
 
   // The FIDO2 scaffolding code will get included in later versions of this example
 
@@ -152,7 +152,7 @@ public class Fido2AuthenticationExample extends BaseExample {
 
   public static void main(String[] args) throws HidException {
 
-    Fido2AuthenticationExample example = new Fido2AuthenticationExample();
+    FMICStartupExample example = new FMICStartupExample();
     example.executeExample();
 
   }
