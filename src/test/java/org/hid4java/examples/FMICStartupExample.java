@@ -174,21 +174,20 @@ public class FMICStartupExample extends BaseExample {
 
 
   /**
-   * Initialise the FIDO2 device and set a communications channel
-   *
    * @param hidDevice The device to use
    * @return True if the device is now initialised for use
    */
   private boolean handleInitialise(HidDevice hidDevice) {
     
-    FMICProtocolBase protocol = new LTSeriesProtocol();
-    int startupStatus = protocol.doStartup(hidDevice);
+    FMICProtocolBase protocol = new LTSeriesProtocol(hidDevice);
+    int startupStatus = protocol.doStartup();
     System.out.println(ANSI_BLUE + "doStartup returned " + startupStatus + ANSI_RESET);
+    int presetNamesStatus = protocol.getPresetNamesList();
+    System.out.println(ANSI_BLUE + "getPresetNamesList returned " + presetNamesStatus + ANSI_RESET);
     System.out.println(ANSI_BLUE + "Last error: " + hidDevice.getLastErrorMessage() + ANSI_RESET);
     return true;
 
   }
-
 
   // Override functions specific to this example beyond this point
   @Override
@@ -229,16 +228,27 @@ public class FMICStartupExample extends BaseExample {
 }
 
 abstract class FMICProtocolBase {
-  public abstract int doStartup(HidDevice fmicDevice);
-  public abstract int getPresetNamesList(HidDevice fmicDevice);
 
   public final int STATUS_OK = 0;
-  public final int STATUS_WRITE_FAIL = -100;
-  public final int STATUS_READ_FAIL = -101;
-  public final int STATUS_REASSEMBLY_FAIL = -102;
-  public final int STATUS_PARSE_FAIL = -103;
+
+  public final int STATUS_WRITE_FAIL = -101;
+  public final int STATUS_READ_FAIL = -102;
+  public final int STATUS_REASSEMBLY_FAIL = -103;
+  public final int STATUS_PARSE_FAIL = -104;
+  public final int STATUS_PRESET_FAIL = -105;
   public final int STATUS_OTHER_FAIL = -109;
+
+  public final int STATUS_PRESET_WRAP_WARN = 201;
+
+  protected final HidDevice m_device;
+
+  protected FMICProtocolBase(HidDevice device) {
+    m_device = device;
+  }
   
+  public abstract int doStartup();
+  public abstract int getPresetNamesList();
+
   public static void colonSeparatedHexToByteArray(String colonSeparatedHex, byte[] byteArray) {
     String byteHexArray[] = colonSeparatedHex.split(":");
     assert byteArray.length>=byteHexArray.length;
@@ -255,43 +265,34 @@ abstract class FMICProtocolBase {
 }
 
 class LTSeriesProtocol extends FMICProtocolBase {
-  public int doStartup(HidDevice ltSeriesDevice) {
+  public LTSeriesProtocol(HidDevice device) {
+    super(device);
+  }
+  public int doStartup() {
     String[][] startupCommands = new String[][]{
       new String[] { "35:09:08:00:8a:07:04:08:00:10", "initialisation request"}, 
       new String[] { "35:07:08:00:b2:06:02:08:01:00:10", "firmware version request"}, 
     };
     for(String[] sc : startupCommands) {
-      assert sc.length==2;
-      byte[] commandBytes = new byte[64];
-      colonSeparatedHexToByteArray(sc[0], commandBytes);
-      log(BaseExample.ANSI_GREEN, "Sending " + sc[1]);
-      FMICStartupExample.printAsHex2(commandBytes,"<");
-      int bytesWritten = ltSeriesDevice.write(commandBytes, 64, (byte) 0x00, true);
-      if (bytesWritten < 0) {
-        log(BaseExample.ANSI_RED,ltSeriesDevice.getLastErrorMessage());
-        return STATUS_WRITE_FAIL;
+      int scStatus = sendCommand(sc[0],sc[1]);
+      if(scStatus!=STATUS_OK) {
+        return scStatus;
       }
-      int bytesRead = readAndAssembleResponsePackets(ltSeriesDevice);
-      if (bytesRead < 0) {
-        log(BaseExample.ANSI_RED,ltSeriesDevice.getLastErrorMessage());
-        return STATUS_REASSEMBLY_FAIL;
-      } 
     }
 
-    // TODO: parse the reassembled packet
     return STATUS_OK;
   }
 
-  private int readAndAssembleResponsePackets(HidDevice ltSeriesDevice) {
+  private int readAndAssembleResponsePackets() {
     byte[] assemblyBuffer;
     byte[] packetBuffer = new byte[64];
     while (true) {
-      int packetBytesRead = ltSeriesDevice.read(packetBuffer,500);
+      int packetBytesRead = m_device.read(packetBuffer,500);
       if (packetBytesRead < 0) {
-        log(BaseExample.ANSI_RED,"read failed, error=" + ltSeriesDevice.getLastErrorMessage());
+        log(BaseExample.ANSI_RED,"read failed, error=" + m_device.getLastErrorMessage());
         return STATUS_READ_FAIL;
       } else if(packetBytesRead!=64) {
-        log(BaseExample.ANSI_RED,"read incomplete, error=" + ltSeriesDevice.getLastErrorMessage());
+        log(BaseExample.ANSI_RED,"read incomplete, error=" + m_device.getLastErrorMessage());
         return STATUS_READ_FAIL;
       } else {
         FMICStartupExample.printAsHex2(packetBuffer,">");
@@ -309,9 +310,42 @@ class LTSeriesProtocol extends FMICProtocolBase {
   }
 
   @Override
-  public int getPresetNamesList(HidDevice fmicDevice) {
-    // TODO Auto-generated method stub
-    throw new UnsupportedOperationException("Unimplemented method 'getPresetNamesList'");
+  public int getPresetNamesList() {
+    for(int i=1; i<128; ++i) {
+      StringBuilder presetJsonSB = new StringBuilder();
+      int psJsonStatus = getPresetJson(i, presetJsonSB);
+      if(psJsonStatus==STATUS_PRESET_WRAP_WARN) {
+        // The preset index in the response does not map
+        // the one requested.
+        // This indicates that all presets have been supplied
+        // and the firmware has wrapped around and is returning
+        // the first preset.
+        return STATUS_OK;
+      } else if (psJsonStatus!=STATUS_OK) {
+        return psJsonStatus;
+      }
+      log(BaseExample.ANSI_BLUE,presetJsonSB.toString());
+    }
+    // We don't expect to get this far
+    return STATUS_OTHER_FAIL;
+  }
+
+  private int sendCommand(String commandBytesHex, String commandDescription) {
+    byte[] commandBytes = new byte[64];
+    colonSeparatedHexToByteArray(commandBytesHex, commandBytes);
+    log(BaseExample.ANSI_GREEN, "Sending " + commandDescription);
+    FMICStartupExample.printAsHex2(commandBytes,"<");
+    int bytesWritten = m_device.write(commandBytes, 64, (byte) 0x00, true);
+    if (bytesWritten < 0) {
+      log(BaseExample.ANSI_RED,m_device.getLastErrorMessage());
+      return STATUS_WRITE_FAIL;
+    }
+    int bytesRead = readAndAssembleResponsePackets();
+    if (bytesRead < 0) {
+      log(BaseExample.ANSI_RED,m_device.getLastErrorMessage());
+      return STATUS_REASSEMBLY_FAIL;
+    } 
+    return STATUS_OK;
   }
 
   private int parseResponse(byte[] assembledResponseMessage) {
@@ -343,5 +377,12 @@ class LTSeriesProtocol extends FMICProtocolBase {
     return STATUS_OK;
   }
 
+  private int getPresetJson(int i, StringBuilder presetJsonSB) {
+    String presetIndexHex = String.format("%02x",i);
+    String commandHexBytes = "35:07:08:00:ca:06:02:08:%1".replace("%1",presetIndexHex);
+    String commandDescription = "request for JSON for preset " + i;
+
+    return sendCommand(commandHexBytes,commandDescription);
+  }
 
 }
