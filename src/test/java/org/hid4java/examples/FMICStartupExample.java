@@ -33,6 +33,7 @@
 package org.hid4java.examples;
 
 import java.util.concurrent.TimeUnit;
+import java.util.Arrays;
 
 import org.hid4java.*;
 import org.hid4java.event.HidServicesEvent;
@@ -85,8 +86,8 @@ public class FMICStartupExample extends BaseExample {
     // Use manual start
     hidServicesSpecification.setAutoStart(false);
 
-    // Use data received events
-    hidServicesSpecification.setAutoDataRead(true);
+    // Responses will be read synchronously
+    hidServicesSpecification.setAutoDataRead(false);
     hidServicesSpecification.setDataReadInterval(500);
 
     // Get HID services using custom specification
@@ -140,16 +141,11 @@ public class FMICStartupExample extends BaseExample {
       handleInitialise(fmicDevice);
     }
 
-    waitAndShutdown(hidServices);
+    hidServices.stop();
+    hidServices.shutdown();
   }
 
-  private void colonSeparatedHexToByteArray(String colonSeparatedHex, byte[] byteArray) {
-    String byteHexArray[] = colonSeparatedHex.split(":");
-    assert byteArray.length>=byteHexArray.length;
-    for(int i=0; i<byteHexArray.length; ++i) {
-       byteArray[i] = (byte) Integer.parseInt(byteHexArray[i],16);
-    }
-  }
+
 
   /**
    * Initialise the FIDO2 device and set a communications channel
@@ -158,29 +154,10 @@ public class FMICStartupExample extends BaseExample {
    * @return True if the device is now initialised for use
    */
   private boolean handleInitialise(HidDevice hidDevice) {
-    int bytesWritten;
-
-    byte[] ltInitRequestBytes = new byte[64];
-    colonSeparatedHexToByteArray("35:09:08:00:8a:07:04:08:00:10", ltInitRequestBytes);
-    // Write message to device with zero byte padding
-    System.out.println(ANSI_GREEN + "Sending LT init request..." + ANSI_RESET);
-    printAsHex2(ltInitRequestBytes,">");
-    bytesWritten = hidDevice.write(ltInitRequestBytes, 64, (byte) 0x00, true);
-    if (bytesWritten < 0) {
-      System.out.println(ANSI_RED + hidDevice.getLastErrorMessage() + ANSI_RESET);
-      return false;
-    }
-
-    byte[] ltFirmwareVersionRequestBytes = new byte[64];
-    colonSeparatedHexToByteArray("35:07:08:00:b2:06:02:08:01:00:10", ltFirmwareVersionRequestBytes);
-    System.out.println(ANSI_GREEN + "Sending firmware version request ..." + ANSI_RESET);
-    printAsHex2(ltFirmwareVersionRequestBytes,">");
-    bytesWritten = hidDevice.write(ltFirmwareVersionRequestBytes, 64, (byte) 0x00, true);
-    if (bytesWritten < 0) {
-      System.out.println(ANSI_RED + hidDevice.getLastErrorMessage() + ANSI_RESET);
-      return false;
-    }
-
+    
+    FMICProtocolBase protocol = new LTSeriesProtocol();
+    int startupStatus = protocol.doStartup(hidDevice);
+    System.out.println(ANSI_BLUE + "doStartup returned " + startupStatus + ANSI_RESET);
     System.out.println(ANSI_BLUE + "Last error: " + hidDevice.getLastErrorMessage() + ANSI_RESET);
     return true;
 
@@ -222,5 +199,91 @@ public class FMICStartupExample extends BaseExample {
       }
     }
     System.out.println(ANSI_RESET);
+  }
+}
+
+abstract class FMICProtocolBase {
+  public abstract int doStartup(HidDevice fmicDevice);
+  public abstract int getPresetNamesList(HidDevice fmicDevice);
+
+  public final int STATUS_OK = 0;
+  public final int STATUS_WRITE_FAIL = -100;
+  public final int STATUS_READ_FAIL = -101;
+  public final int STATUS_REASSEMBLY_FAIL = -102;
+  public final int STATUS_PARSE_FAIL = -103;
+  public final int STATUS_OTHER_FAIL = -109;
+  
+  public static void colonSeparatedHexToByteArray(String colonSeparatedHex, byte[] byteArray) {
+    String byteHexArray[] = colonSeparatedHex.split(":");
+    assert byteArray.length>=byteHexArray.length;
+    for(int i=0; i<byteHexArray.length; ++i) {
+       byteArray[i] = (byte) Integer.parseInt(byteHexArray[i],16);
+    }
+  }
+
+  protected static void log(String ansiPrefix, String message) {
+    System.out.println(
+      ansiPrefix + message + BaseExample.ANSI_RESET
+    );
+  }
+}
+
+class LTSeriesProtocol extends FMICProtocolBase {
+  public int doStartup(HidDevice ltSeriesDevice) {
+    String[][] startupCommands = new String[][]{
+      new String[] { "35:09:08:00:8a:07:04:08:00:10", "initialisation request"}, 
+      new String[] { "35:07:08:00:b2:06:02:08:01:00:10", "firmware version request"}, 
+    };
+    for(String[] sc : startupCommands) {
+      assert sc.length==2;
+      byte[] commandBytes = new byte[64];
+      colonSeparatedHexToByteArray(sc[0], commandBytes);
+      log(BaseExample.ANSI_GREEN, "Sending " + sc[1]);
+      FMICStartupExample.printAsHex2(commandBytes,"<");
+      int bytesWritten = ltSeriesDevice.write(commandBytes, 64, (byte) 0x00, true);
+      if (bytesWritten < 0) {
+        log(BaseExample.ANSI_RED,ltSeriesDevice.getLastErrorMessage());
+        return STATUS_WRITE_FAIL;
+      }
+      int bytesRead = readAndAssembleResponsePackets(ltSeriesDevice);
+      if (bytesRead < 0) {
+        log(BaseExample.ANSI_RED,ltSeriesDevice.getLastErrorMessage());
+        return STATUS_REASSEMBLY_FAIL;
+      } 
+    }
+
+    // TODO: parse the reassembled packet
+    return STATUS_OK;
+  }
+
+  private int readAndAssembleResponsePackets(HidDevice ltSeriesDevice) {
+    byte[] assemblyBuffer;
+    byte[] packetBuffer = new byte[64];
+    while (true) {
+      int packetBytesRead = ltSeriesDevice.read(packetBuffer,500);
+      if (packetBytesRead < 0) {
+        log(BaseExample.ANSI_RED,"read failed, error=" + ltSeriesDevice.getLastErrorMessage());
+        return STATUS_READ_FAIL;
+      } else if(packetBytesRead!=64) {
+        log(BaseExample.ANSI_RED,"read incomplete, error=" + ltSeriesDevice.getLastErrorMessage());
+        return STATUS_READ_FAIL;
+      } else {
+        FMICStartupExample.printAsHex2(packetBuffer,">");
+      }
+      // For the moment we only support single-packet commands
+      assert packetBuffer[0] == 0x00;
+      assert packetBuffer[1] == 0x35;
+      int packetContentStart = 3;
+      int packetContentEnd = packetContentStart + packetBuffer[2];
+      byte[] packetContent = Arrays.copyOfRange(packetBuffer,packetContentStart,packetContentEnd);
+      FMICStartupExample.printAsHex2(packetContent,"+>");
+      return packetContent.length;
+    }
+  }
+
+  @Override
+  public int getPresetNamesList(HidDevice fmicDevice) {
+    // TODO Auto-generated method stub
+    throw new UnsupportedOperationException("Unimplemented method 'getPresetNamesList'");
   }
 }
