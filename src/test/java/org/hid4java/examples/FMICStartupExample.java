@@ -106,10 +106,36 @@ public class FMICStartupExample extends BaseExample {
         continue;
       }
       if (hidDevice.getUsage() == 0x01 && hidDevice.getUsagePage() == 0xffffff00) {
-        System.out.println(ANSI_GREEN + "Using LT series device: " + hidDevice.getPath() + ANSI_RESET);
+        System.out.println(ANSI_GREEN + "Using FMIC device: " + hidDevice.getPath() + ANSI_RESET);
         fmicDevice = hidDevice;
         break;
       }
+    }
+
+    int productId = fmicDevice.getProductId();
+    if (productId==0x0046) {
+      // Mustang LT40S - tested with firmware 1.0.7
+      System.out.println(
+        ANSI_GREEN + 
+        String.format("Connected FMIC device is %s, expected to work providing firmware is version 1.0.7",fmicDevice.getProduct()) + 
+        ANSI_RESET
+      );
+    } else if(productId>=0x0037 && productId<0x0046) {
+      // See incomplete list of VID/PIDs for Mustang products at 
+      // https://github.com/offa/plug/blob/master/doc/USB.md
+      // This range appears to be where the LT-series devices lie historically.    
+      System.out.println(
+        ANSI_YELLOW + 
+        String.format("Connected FMIC device is %s, probably LT series but not tested, may or may not work",fmicDevice.getProduct()) + 
+        ANSI_RESET
+      );
+    } else {
+      System.out.println(
+        ANSI_RED + 
+        String.format("Connected FMIC device is %s, outside VID range for LT series, not expected to work",fmicDevice.getProduct()) + 
+        ANSI_RESET
+      );
+      fmicDevice = null;
     }
 
     if (fmicDevice == null) {
@@ -277,6 +303,7 @@ class LTSeriesProtocol extends FMICProtocolBase {
       int packetContentEnd = packetContentStart + packetBuffer[2];
       byte[] packetContent = Arrays.copyOfRange(packetBuffer,packetContentStart,packetContentEnd);
       FMICStartupExample.printAsHex2(packetContent,"+>");
+      parseResponse(packetContent);
       return packetContent.length;
     }
   }
@@ -286,4 +313,35 @@ class LTSeriesProtocol extends FMICProtocolBase {
     // TODO Auto-generated method stub
     throw new UnsupportedOperationException("Unimplemented method 'getPresetNamesList'");
   }
+
+  private int parseResponse(byte[] assembledResponseMessage) {
+    // LT series responses are broadly based on Google protobuf 
+    // structuring, with the opcode identifying the message type
+    // expressed as a 1-byte or 2-byte varint at offset 2 in 
+    // the message buffer.
+    // See:
+    // https://github.com/brentmaxwell/LtAmp/tree/main/Schema/protobuf
+    // for protobuf declarations for a wide range of messages.
+    // For this implementation we choose not to use the protobuf
+    // framework, for the small number of messages we need to handle
+    // we rely on the consistent layout of the packets.
+    if(
+      (0xba == (0xff & assembledResponseMessage[2]) ) &&
+      (0x06 == (0xff & assembledResponseMessage[3]) )
+    ) {
+        // This as a response to the firmware version request 
+        int payloadLength = assembledResponseMessage[4];
+        // Next byte is protobuf tag+type for firmware version field
+        assert 0x0a == assembledResponseMessage[5]; 
+        int firmwareVersionLength = assembledResponseMessage[6];
+        assert payloadLength == firmwareVersionLength + 2;
+
+        String firmwareVersion=new String(assembledResponseMessage,7,firmwareVersionLength);
+        log(BaseExample.ANSI_BLUE,"Firmware version: " + firmwareVersion);
+    }
+
+    return STATUS_OK;
+  }
+
+
 }
