@@ -284,9 +284,10 @@ class LTSeriesProtocol extends FMICProtocolBase {
   }
 
   private int readAndAssembleResponsePackets() {
-    byte[] assemblyBuffer;
-    byte[] packetBuffer = new byte[64];
+    byte[] assemblyBuffer = new byte[4096];
+    int assemblyBufferOffset=0;
     while (true) {
+      byte[] packetBuffer = new byte[64];
       int packetBytesRead = m_device.read(packetBuffer,500);
       if (packetBytesRead < 0) {
         log(BaseExample.ANSI_RED,"read failed, error=" + m_device.getLastErrorMessage());
@@ -297,16 +298,43 @@ class LTSeriesProtocol extends FMICProtocolBase {
       } else {
         FMICStartupExample.printAsHex2(packetBuffer,">");
       }
-      // For the moment we only support single-packet commands
       assert packetBuffer[0] == 0x00;
-      assert packetBuffer[1] == 0x35;
       int packetContentStart = 3;
-      int packetContentEnd = packetContentStart + packetBuffer[2];
-      byte[] packetContent = Arrays.copyOfRange(packetBuffer,packetContentStart,packetContentEnd);
-      FMICStartupExample.printAsHex2(packetContent,"+>");
-      parseResponse(packetContent);
-      return packetContent.length;
+      int contentLength = packetBuffer[2];
+      boolean messageComplete;
+      switch(packetBuffer[1]) {
+        case 0x33: // first packet
+          assert assemblyBufferOffset == 0;
+          assert contentLength == 0x3c;
+          messageComplete = false;
+        break;
+
+        case 0x34: // middle packet
+          assert contentLength == 0x3c;
+          messageComplete = false;
+        break;
+
+        case 0x35:
+          assert contentLength <= 0x3c;
+          messageComplete = true;
+        break;
+
+        default:
+          return STATUS_REASSEMBLY_FAIL;
+      }
+      assert assemblyBufferOffset + contentLength < assemblyBuffer.length;
+      System.arraycopy(packetBuffer,packetContentStart, assemblyBuffer,assemblyBufferOffset, contentLength);
+      assemblyBufferOffset+=contentLength;
+      if(messageComplete) {
+        break;
+      }
     }
+
+    // Dump the reassembled message with a distinctive direction character
+    byte[] reassembledMessage = Arrays.copyOfRange(assemblyBuffer,0,assemblyBufferOffset);
+    FMICStartupExample.printAsHex2(reassembledMessage,"+>");
+    parseResponse(reassembledMessage);
+    return STATUS_OK;
   }
 
   @Override
