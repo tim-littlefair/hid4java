@@ -23,6 +23,13 @@
  *
  */
 
+ /*
+  * This file is based on Gary Rowe's Fido2AuthenticationExample.java, with 
+  * modifications to replace the FIDO2 authentication operations with in 
+  * the original file with operations required to connect to and download preset
+  * JSON documents from a Fender Mustang LT series amplifier.
+  */
+
 package org.hid4java.examples;
 
 import org.hid4java.*;
@@ -32,9 +39,10 @@ import org.hid4java.jna.HidApi;
 import java.security.SecureRandom;
 
 /**
- * Demonstrate the USB HID interface using a FIDO2 USB device
+ * Demonstrate the USB HID interface using a Fender Mustang/Rumble LT-series modelling guitar amplifier.
+ * Presently tested with the LT40S model only.
  * <br>
- * If you have a FIDO2 U2F authentication device (e.g. a HyperFIDO, Yubikey, Solokey, Trezor or Ledger)
+ * If you have an applicable Fender LT-series device (e.g. Mustang LT25, LT40S, LT50 or Rumble LT25)
  * you may wish to explore its capabilities using this example. Simply plug it in and run the example to
  * see the initial handshake to select a channel and basic device information.
  * <br>
@@ -50,7 +58,7 @@ import java.security.SecureRandom;
  * Use the following command to try it out:
  * <br>
  * <code>
- * mvn clean test exec:java -Dexec.classpathScope="test" -Dexec.mainClass="org.hid4java.examples.FMICStartupExample"
+ * mvn clean test exec:java -Dexec.classpathScope="test" -Dexec.mainClass="org.hid4java.examples.LT40SStartupExample"
  * </code>
  *
  * @since 0.8.0
@@ -186,8 +194,13 @@ public class FMICStartupExample extends BaseExample {
     // Enumerate devices looking for usage page = 0xf1d0 (FIDO...)
     HidDevice fidoDevice = null;
     for (HidDevice hidDevice : hidServices.getAttachedHidDevices()) {
-      if (hidDevice.getUsage() == 0x01 && hidDevice.getUsagePage() == 0xfffff1d0) {
-        System.out.println(ANSI_GREEN + "Using FIDO2 device: " + hidDevice.getPath() + ANSI_RESET);
+      // for testing with Logitech wireless keyboard/mouse dongle use vendorId = 0x046d
+      // for testing with Fender LT-series use vendorId = 0x1ed8
+      if (hidDevice.getVendorId() != 0x1ed8) {
+        continue;
+      }
+      if (hidDevice.getUsage() == 0x01 && hidDevice.getUsagePage() == 0xffffff00) {
+        System.out.println(ANSI_GREEN + "Using LT series device: " + hidDevice.getPath() + ANSI_RESET);
         fidoDevice = hidDevice;
         break;
       }
@@ -195,20 +208,24 @@ public class FMICStartupExample extends BaseExample {
 
     if (fidoDevice == null) {
       // Shut down and rely on auto-shutdown hook to clear HidApi resources
-      System.out.println(ANSI_YELLOW + "No FIDO2 devices attached." + ANSI_RESET);
+      System.out.println(ANSI_YELLOW + "No relevant devices attached." + ANSI_RESET);
     } else {
 
       // Open the device
       if (fidoDevice.isClosed()) {
+        System.out.println(ANSI_YELLOW + "Need to open device." + ANSI_RESET);
         if (!fidoDevice.open()) {
-          throw new IllegalStateException("Unable to open device");
+          throw new IllegalStateException("Unable to open device.");
         }
+        System.out.println(ANSI_YELLOW + "Device opened." + ANSI_RESET);
+      } else {
+        System.out.println(ANSI_YELLOW + "No need to open device because it is already open." + ANSI_RESET);
       }
 
       // Perform a USB ReportDescriptor operation to determine general device capabilities
       // This requires complex decoding defined in the referenced documents
       // Reports can be up to 4096 bytes for complex devices so 64 is quite low
-      byte[] reportDescriptor = new byte[64];
+      byte[] reportDescriptor = new byte[128];
       if (fidoDevice.getReportDescriptor(reportDescriptor) > 0) {
         System.out.println(ANSI_GREEN + "FIDO2 device report descriptor (first 64 bytes): " + fidoDevice.getPath() + ANSI_RESET);
         printAsHex(reportDescriptor);
@@ -234,6 +251,13 @@ public class FMICStartupExample extends BaseExample {
 
   }
 
+  private void colonSeparatedHexToByteArray(String colonSeparatedHex, byte[] byteArray) {
+    String byteHexArray[] = colonSeparatedHex.split(":");
+    assert byteArray.length>=byteHexArray.length;
+    for(int i=0; i<byteHexArray.length; ++i) {
+       byteArray[i] = (byte) Integer.parseInt(byteHexArray[i],16);
+    }
+  }
   /**
    * Initialise the FIDO2 device and set a communications channel
    *
@@ -241,25 +265,27 @@ public class FMICStartupExample extends BaseExample {
    * @return True if the device is now initialised for use
    */
   private boolean handleInitialise(HidDevice hidDevice) {
+    int bytesWritten;
 
-    generateNonce();
-
-    // Initialise
-    byte[] initialiseRequest = new byte[]{
-      (byte) 0xff, (byte) 0xff, (byte) 0xff, (byte) 0xff, // Broadcast channel
-      (byte) ((byte) 0x80 + CTAP_CMD_INIT), // Initialise command
-      0x00, 0x08, // Payload byte count (BCNT)
-      nonce[0], nonce[1], nonce[2], nonce[3], nonce[4], nonce[5], nonce[6], nonce[7]
-    };
-
+    byte[] ltInitRequestBytes = new byte[64];
+    colonSeparatedHexToByteArray("35:09:08:00:8a:07:04:08:00:10", ltInitRequestBytes);
     // Write message to device with zero byte padding
-    System.out.println(ANSI_GREEN + "Sending CTAPHID_INIT..." + ANSI_RESET);
-    int bytesWritten = hidDevice.write(initialiseRequest, CTAP_MAX_REPORT_LEN, (byte) 0x00, true);
+    System.out.println(ANSI_GREEN + "Sending LT init request..." + ANSI_RESET);
+    bytesWritten = hidDevice.write(ltInitRequestBytes, 64, (byte) 0x00, true);
     if (bytesWritten < 0) {
       System.out.println(ANSI_RED + hidDevice.getLastErrorMessage() + ANSI_RESET);
       return false;
     }
 
+    byte[] ltFirmwareVersionRequestBytes = new byte[64];
+    colonSeparatedHexToByteArray("35:07:08:00:b2:06:02:08:01:00:10", ltFirmwareVersionRequestBytes);
+    bytesWritten = hidDevice.write(ltFirmwareVersionRequestBytes, 64, (byte) 0x00, true);
+    if (bytesWritten < 0) {
+      System.out.println(ANSI_RED + hidDevice.getLastErrorMessage() + ANSI_RESET);
+      return false;
+    }
+
+    System.out.println(ANSI_BLUE + "Last error: " + hidDevice.getLastErrorMessage() + ANSI_RESET);
     return true;
 
   }
