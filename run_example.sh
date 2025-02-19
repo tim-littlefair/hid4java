@@ -70,7 +70,7 @@ then
 elif [ ! -f $clspathprefix/$examplesubpath/$examplename.class ]
 then
     echo Example compiled file not found at $clspathprefix/$examplesubpath/$examplename.class
-    echo Perhaps run 'mvn clean test' and fix build errors?
+    echo Perhaps run 'sudo mvn clean test' and fix build errors?
 else
     echo Pre-run checks OK
 fi
