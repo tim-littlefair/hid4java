@@ -216,8 +216,12 @@ public class FMICStartupExample extends BaseExample {
   // This allows larger buffers to be used without blowing out
   // log files with empty bytes (e.g. for the report descriptor).
   // This variant is also suitable for use with both sent 
-  // and received data.
+  // and received data, and is controlled by an enablement variable
+  static boolean enable_printAsHex2=false;
   public static void printAsHex2(byte[] dataSentOrReceived, String directionChar) {
+    if(enable_printAsHex2==false) {
+      return;
+    }
     System.out.printf("%s [%02x]:", directionChar, dataSentOrReceived.length);
     int trailingZeroByteCount = -1; // -1 signifies 'no non-zero bytes seen yet'
     for (int i=dataSentOrReceived.length-1; i>0; --i) {
@@ -444,13 +448,13 @@ class LTSeriesProtocol extends FMICProtocolBase {
       // bytes 7 and 8 are a varint giving the length of the JSON field
       // (again, this field is always long enough to require two bytes)
       
-      // bytes 9 to (length-3) contain the JSON 
+      // bytes 9 to (length-2) contain the JSON 
       String jsonDefinition = new String(
-        assembledResponseMessage,9,assembledResponseMessage.length-9-3,
+        assembledResponseMessage,9,assembledResponseMessage.length-9-2,
         StandardCharsets.UTF_8
       );
       int presetIndex=assembledResponseMessage[assembledResponseMessage.length-1];
-      System.out.println(jsonDefinition);
+      // System.out.println(jsonDefinition);
       String presetExtendedName = FMICDevice.extendedName(jsonDefinition);
       System.out.println(String.format(
         "Preset %s at index %d",presetExtendedName,presetIndex
