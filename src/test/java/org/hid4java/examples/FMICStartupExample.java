@@ -33,7 +33,15 @@
 package org.hid4java.examples;
 
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Base64;
+import java.util.HashMap;
 
 import org.hid4java.*;
 import org.hid4java.event.HidServicesEvent;
@@ -64,6 +72,8 @@ import org.hid4java.jna.HidApi;
  *
  * @since 0.9.0? 
  */
+
+
 public class FMICStartupExample extends BaseExample {
   
   public static void main(String[] args) throws HidException {
@@ -339,7 +349,7 @@ class LTSeriesProtocol extends FMICProtocolBase {
 
   @Override
   public int getPresetNamesList() {
-    for(int i=1; i<128; ++i) {
+    for(int i=1; i<=60; ++i) {
       StringBuilder presetJsonSB = new StringBuilder();
       int psJsonStatus = getPresetJson(i, presetJsonSB);
       if(psJsonStatus==STATUS_PRESET_WRAP_WARN) {
@@ -387,6 +397,20 @@ class LTSeriesProtocol extends FMICProtocolBase {
     // For this implementation we choose not to use the protobuf
     // framework, for the small number of messages we need to handle
     // we rely on the consistent layout of the packets.
+
+    // All of the responses we are seeing so far start with these two 
+    // bytes.
+    // This is a generic protobuf header.
+    assert 0x08 == assembledResponseMessage[0];
+    assert 0x02 ==  assembledResponseMessage[1];
+
+    // The next 1 or 2 bytes contain a varint
+    // indicating the message tag and its protobuf
+    // type.
+    // 3 bits are required for the protobuf type
+    // so message tags<16 are can be encoded in 
+    // a single byte varint, tags with higher 
+    // values require two bytes.
     if(
       (0xba == (0xff & assembledResponseMessage[2]) ) &&
       (0x06 == (0xff & assembledResponseMessage[3]) )
@@ -400,6 +424,37 @@ class LTSeriesProtocol extends FMICProtocolBase {
 
         String firmwareVersion=new String(assembledResponseMessage,7,firmwareVersionLength);
         log(BaseExample.ANSI_BLUE,"Firmware version: " + firmwareVersion);
+    } else if(
+      (0xfa == (0xff & assembledResponseMessage[2]) ) &&
+      (0x01 == (0xff & assembledResponseMessage[3]) )
+    ) {
+      // This is a response to a request for the JSON definition
+      // of the preset with a specific index.  The preset index supplied
+      // is returned as the last byte of the message.
+      // If an out-of-range preset is requested the amp replies with 
+      // the definition of preset 1.
+    
+      // bytes 4 and 5 are a varint giving the length of the whole message
+      // (assuming that the text returned is long enough to require a two-byte
+      // varint, which it always is).
+
+      // byte 6 is protobuf tag+type for the JSON definition field
+      assert 0x0a == assembledResponseMessage[5];       
+
+      // bytes 7 and 8 are a varint giving the length of the JSON field
+      // (again, this field is always long enough to require two bytes)
+      
+      // bytes 9 to (length-3) contain the JSON 
+      String jsonDefinition = new String(
+        assembledResponseMessage,9,assembledResponseMessage.length-9-3,
+        StandardCharsets.UTF_8
+      );
+      int presetIndex=assembledResponseMessage[assembledResponseMessage.length-1];
+      System.out.println(jsonDefinition);
+      String presetExtendedName = FMICDevice.extendedName(jsonDefinition);
+      System.out.println(String.format(
+        "Preset %s at index %d",presetExtendedName,presetIndex
+      ));
     }
 
     return STATUS_OK;
@@ -411,6 +466,52 @@ class LTSeriesProtocol extends FMICProtocolBase {
     String commandDescription = "request for JSON for preset " + i;
 
     return sendCommand(commandHexBytes,commandDescription);
+  }  
+}
+
+class FMICDevice {
+  HidDevice m_hidDevice;
+  ArrayList<String> m_presetJsonDefinitions;
+
+  FMICDevice(HidDevice hidDevice) {
+    m_hidDevice = hidDevice;
+    m_presetJsonDefinitions = new ArrayList<>();
   }
 
+  void addPreset(int index, String jsonDefinition) {
+    String presetExtendedName = extendedName(jsonDefinition);
+    System.out.println(String.format(
+      "Adding preset #%03d %s", index, presetExtendedName
+    ));
+    m_presetJsonDefinitions.add(index,jsonDefinition);
+  }
+
+  static String getStringAttribute(
+    String jsonDefinitionText, String attributeName
+    ) {
+      Pattern attrDefinitionPattern = Pattern.compile(
+        String.format("\"%s\": \"([^\"]*)\"", attributeName)
+      );
+      Matcher m = attrDefinitionPattern.matcher(jsonDefinitionText);
+      m.find();
+      assert m.groupCount() == 1;
+      return m.group(1);
+  }
+
+  static String extendedName(String jsonDefinitionText) {
+    String name = getStringAttribute(jsonDefinitionText,"displayName");
+    try {
+      String hash = Base64.getUrlEncoder().encodeToString(
+        MessageDigest.getInstance("SHA-256").digest(
+          jsonDefinitionText.getBytes(StandardCharsets.UTF_8)
+        )
+      ).substring(0,7);
+      return name.replace(" ","_")  + "-" + hash;
+    }
+    catch (NoSuchAlgorithmException e) {
+      return name.replace(" ","_") ;
+    }
+  }
 }
+
+
