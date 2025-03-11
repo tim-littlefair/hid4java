@@ -296,7 +296,7 @@ class LTSeriesProtocol extends FMICProtocolBase {
 
     return STATUS_OK;
   }
-
+  
   private int readAndAssembleResponsePackets() {
     byte[] assemblyBuffer = new byte[4096];
     int assemblyBufferOffset=0;
@@ -494,16 +494,24 @@ class FMICDevice {
     String jsonDefinitionText, String attributeName
     ) {
       Pattern attrDefinitionPattern = Pattern.compile(
-        String.format("\"%s\": \"([^\"]*)\"", attributeName)
+        String.format("\"%s\":\\s*\"([^\"]*)\"", attributeName)
       );
       Matcher m = attrDefinitionPattern.matcher(jsonDefinitionText);
-      m.find();
-      assert m.groupCount() == 1;
-      return m.group(1);
+
+      if (m.find()) {
+        assert m.groupCount() == 1;
+        return m.group(1);
+      } else {
+        return null;
+      }
   }
 
   static String extendedName(String jsonDefinitionText) {
     String name = getStringAttribute(jsonDefinitionText,"displayName");
+    if(name==null) {
+      System.out.println("No name found in: " + jsonDefinitionText);
+      name = "_noname_";
+    }
     try {
       String hash = Base64.getUrlEncoder().encodeToString(
         MessageDigest.getInstance("SHA-256").digest(
