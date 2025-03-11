@@ -356,20 +356,13 @@ class LTSeriesProtocol extends FMICProtocolBase {
     for(int i=1; i<=60; ++i) {
       StringBuilder presetJsonSB = new StringBuilder();
       int psJsonStatus = getPresetJson(i, presetJsonSB);
-      if(psJsonStatus==STATUS_PRESET_WRAP_WARN) {
-        // The preset index in the response does not map
-        // the one requested.
-        // This indicates that all presets have been supplied
-        // and the firmware has wrapped around and is returning
-        // the first preset.
-        return STATUS_OK;
-      } else if (psJsonStatus!=STATUS_OK) {
+      if (psJsonStatus!=STATUS_OK) {
         return psJsonStatus;
       }
       log(BaseExample.ANSI_BLUE,presetJsonSB.toString());
     }
     // We don't expect to get this far
-    return STATUS_OTHER_FAIL;
+    return STATUS_OK;
   }
 
   private int sendCommand(String commandBytesHex, String commandDescription) {
