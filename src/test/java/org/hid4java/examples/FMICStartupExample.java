@@ -32,9 +32,6 @@
 
 package org.hid4java.examples;
 
-import java.util.concurrent.TimeUnit;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -42,18 +39,28 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.HashMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.io.PrintStream;
 
-import org.hid4java.*;
+import org.hid4java.HidDevice;
+import org.hid4java.HidException;
+import org.hid4java.HidManager;
+import org.hid4java.HidServices;
+import org.hid4java.HidServicesListener;
+import org.hid4java.HidServicesSpecification;
 import org.hid4java.event.HidServicesEvent;
 import org.hid4java.jna.HidApi;
 
 /**
- * Demonstrate the USB HID interface using a Fender Mustang/Rumble LT-series modelling guitar amplifier.
+ * This example demonstrates the USB HID interface using a Fender Mustang/Rumble 
+ * LT-series modelling guitar amplifier.
  * Presently tested with the LT40S model only.
  * <br>
- * If you have an applicable Fender LT-series device (e.g. Mustang LT25, LT40S, LT50 or Rumble LT25)
- * you may wish to explore its capabilities using this example. Simply plug it in and run the example to
- * see the initial handshake to select a channel and basic device information.
+ * If you have an applicable Fender LT-series device (e.g. Mustang LT25, LT40S, 
+ * LT50 or Rumble LT25) you may wish to explore its capabilities using this 
+ * example. Simply plug it in and run the example to see the initial handshake 
+ * to select a channel and basic device information.
  * <br>
  * You can see some of hid4java features in use such as:
  * <ul>
@@ -116,7 +123,7 @@ public class FMICStartupExample extends BaseExample {
         continue;
       }
       if (hidDevice.getUsage() == 0x01 && hidDevice.getUsagePage() == 0xffffff00) {
-        System.out.println(ANSI_GREEN + "Using FMIC device: " + hidDevice.getPath() + ANSI_RESET);
+        System.out.println("Using FMIC device: " + hidDevice.getPath());
         fmicDevice = hidDevice;
         break;
       }
@@ -126,42 +133,38 @@ public class FMICStartupExample extends BaseExample {
     if (productId==0x0046) {
       // Mustang LT40S - tested with firmware 1.0.7
       System.out.println(
-        ANSI_GREEN + 
-        String.format("Connected FMIC device is %s, expected to work providing firmware is version 1.0.7",fmicDevice.getProduct()) + 
-        ANSI_RESET
+        String.format("Connected FMIC device is %s, expected to work providing firmware is version 1.0.7",fmicDevice.getProduct())
       );
     } else if(productId>=0x0037 && productId<0x0046) {
       // See incomplete list of VID/PIDs for Mustang products at 
       // https://github.com/offa/plug/blob/master/doc/USB.md
       // This range appears to be where the LT-series devices lie historically.    
-      System.out.println(
-        ANSI_YELLOW + 
-        String.format("Connected FMIC device is %s, probably LT series but not tested, may or may not work",fmicDevice.getProduct()) + 
-        ANSI_RESET
-      );
+            System.out.println(String.format(
+                "Connected FMIC device is %s, probably LT series but not tested, may or may not work",
+                fmicDevice.getProduct()
+            ));
     } else {
-      System.out.println(
-        ANSI_RED + 
-        String.format("Connected FMIC device is %s, outside VID range for LT series, not expected to work",fmicDevice.getProduct()) + 
-        ANSI_RESET
-      );
+            System.out.println(String.format(
+                "Connected FMIC device is %s, outside VID range for LT series, not expected to work",
+                fmicDevice.getProduct()
+            ));
       fmicDevice = null;
     }
 
     if (fmicDevice == null) {
       // Shut down and rely on auto-shutdown hook to clear HidApi resources
-      System.out.println(ANSI_YELLOW + "No relevant devices attached." + ANSI_RESET);
+      System.out.println("No relevant devices attached.");
     } else {
 
       // Open the device
       if (fmicDevice.isClosed()) {
-        System.out.println(ANSI_YELLOW + "Need to open device." + ANSI_RESET);
+        System.out.println("Need to open device.");
         if (!fmicDevice.open()) {
           throw new IllegalStateException("Unable to open device.");
         }
-        System.out.println(ANSI_YELLOW + "Device opened." + ANSI_RESET);
+        System.out.println("Device opened.");
       } else {
-        System.out.println(ANSI_YELLOW + "No need to open device because it is already open." + ANSI_RESET);
+        System.out.println("No need to open device because it is already open.");
       }
 
       // Perform a USB ReportDescriptor operation to determine general device capabilities
@@ -169,7 +172,7 @@ public class FMICStartupExample extends BaseExample {
       // Probably won't need this but allocate max capacity anyway.
       byte[] reportDescriptor = new byte[4096];
       if (fmicDevice.getReportDescriptor(reportDescriptor) > 0) {
-        System.out.println(ANSI_GREEN + "FMIC device report descriptor: " + fmicDevice.getPath() + ANSI_RESET);
+        System.out.println("FMIC device report descriptor: " + fmicDevice.getPath());
         printAsHex2(reportDescriptor,"<");
       }
 
@@ -191,10 +194,10 @@ public class FMICStartupExample extends BaseExample {
     
     FMICProtocolBase protocol = new LTSeriesProtocol(hidDevice);
     int startupStatus = protocol.doStartup();
-    System.out.println(ANSI_BLUE + "doStartup returned " + startupStatus + ANSI_RESET);
+    System.out.println("doStartup returned " + startupStatus);
     int presetNamesStatus = protocol.getPresetNamesList();
-    System.out.println(ANSI_BLUE + "getPresetNamesList returned " + presetNamesStatus + ANSI_RESET);
-    System.out.println(ANSI_BLUE + "Last error: " + hidDevice.getLastErrorMessage() + ANSI_RESET);
+    System.out.println("getPresetNamesList returned " + presetNamesStatus);
+    System.out.println("Last error: " + hidDevice.getLastErrorMessage());
     return true;
 
   }
@@ -237,7 +240,7 @@ public class FMICStartupExample extends BaseExample {
         break;
       }
     }
-    System.out.println(ANSI_RESET);
+    System.out.println();
   }
 }
 
@@ -273,7 +276,7 @@ abstract class FMICProtocolBase {
 
   protected static void log(String ansiPrefix, String message) {
     System.out.println(
-      ansiPrefix + message + BaseExample.ANSI_RESET
+      ansiPrefix + message
     );
   }
 }
