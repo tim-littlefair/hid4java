@@ -36,14 +36,8 @@
 examplejavapkg=org.hid4java.examples
 examplesubpath=$(echo $examplejavapkg | sed -e 's^\.^/^g')
 srcpathprefix=./src/test/java
-clspathprefix=./target/test-classes
-
-# This problem has been reported against a specific variant of
-# AMD/Intel desktop Linux.
-# If the problem turns out to be Maven-related and affect other 
-# platforms, it may be necessary to require the platform to 
-# be specified or detected.  For now, YAGNI.
-h4j_platform=linux-amd64
+testclspathprefix=./target/test-classes
+targetjar=./target/hid4java-develop-SNAPSHOT.jar
 
 usage() {
     echo ""
@@ -67,30 +61,30 @@ elif [ ! -f $srcpathprefix/$examplesubpath/$examplename.java ]
 then
     echo Example source file not found at $srcpathprefix/$examplesubpath/$examplename.java
     usage
-elif [ ! -f $clspathprefix/$examplesubpath/$examplename.class ]
+elif [ ! -f $targetjar ]
 then
-    echo Example compiled file not found at $clspathprefix/$examplesubpath/$examplename.class
-    echo Perhaps run 'mvn clean test' and fix build errors?
+    echo JAR file for project not found at $targetjar
+    echo Perhaps run \'mvn clean package\' and fix build errors?
+    exit 1
+elif [ ! -f $testclspathprefix/$examplesubpath/$examplename.class ]
+then
+    echo Example compiled file not found at $testclspathprefix/$examplesubpath/$examplename.class
+    echo Perhaps run \'mvn clean package\' and fix build errors?
+    exit 1
 else
     echo Pre-run checks OK
 fi
 
-# To run examples under AMD/Intel Linux, we need a classpath 
-# which includes the following components:
-#
-# + the .class files compiled from hid4java source for the 
-# hid4java library itself and its tests (the examples are
-# a subdirectory of the test set)
-CLASSPATH=target/classes
-CLASSPATH=$CLASSPATH:target/test-classes:
-#
-# + the .so files necessary to run under the current OS platform
-CLASSPATH=$CLASSPATH:target/classes/$h4j_platform
-#
-# + the .jar file providing JNA library, in the user's Maven repository
+# The .jar file created by mvn package does not include example
+# classes so we need them explicitly here
+CLASSPATH=$testclspathprefix
+CLASSPATH=$CLASSPATH:$targetjar
+
+# The classpath also needs the .jar file providing JNA library, in the user's Maven repository
 CLASSPATH=$CLASSPATH:$HOME/.m2/repository/net/java/dev/jna/jna/5.16.0/jna-5.16.0.jar
 
 export CLASSPATH
+echo $CLASSPATH
 
 sudo java -cp $CLASSPATH org.hid4java.examples.$examplename
 
