@@ -30,28 +30,6 @@
   * JSON documents from a Fender Mustang LT series amplifier.
   */
 
-package org.hid4java.examples;
-
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Base64;
-import java.util.HashMap;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-import java.io.PrintStream;
-
-import org.hid4java.HidDevice;
-import org.hid4java.HidException;
-import org.hid4java.HidManager;
-import org.hid4java.HidServices;
-import org.hid4java.HidServicesListener;
-import org.hid4java.HidServicesSpecification;
-import org.hid4java.ScanMode;
-import org.hid4java.event.HidServicesEvent;
-import org.hid4java.jna.HidApi;
 
 /**
  * This example demonstrates the USB HID interface using a Fender Mustang/Rumble 
@@ -81,19 +59,45 @@ import org.hid4java.jna.HidApi;
  * @since 0.9.0? 
  */
 
+package org.hid4java.examples;
+
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Base64;
+import java.util.HashMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.io.PrintStream;
+
+import org.hid4java.HidDevice;
+import org.hid4java.HidManager;
+import org.hid4java.HidServices;
+import org.hid4java.HidServicesListener;
+import org.hid4java.HidServicesSpecification;
+import org.hid4java.ScanMode;
+import org.hid4java.event.HidServicesEvent;
+import org.hid4java.jna.HidApi;
+
 
 public class FMICStartupExample extends BaseExample {
   
-  public static void main(String[] args) throws HidException {
+  public static void main(String[] args) {
 
     FMICStartupExample example = new FMICStartupExample();
-    example.executeExample();
+    example.printPlatform();
 
+    // This example is a cut-down version of the class
+    // net.heretical_camelid.fhau.desktop_app.DesktopUsbAmpProvider
+	  // defined in Tim Littlefair's feral_horse_amp_utilities (FHAU) 
+		// GitHub repo at:
+    // URL TBD (not yet public)
+    example.startProvider();
   }
 
-  private void executeExample() throws HidException {
-
-    printPlatform();
+  private void startProvider() {
 
     // Demonstrate low level traffic logging
     HidApi.logTraffic = false;
@@ -229,7 +233,6 @@ public class FMICStartupExample extends BaseExample {
       System.out.println("Last error: " + hidDevice.getLastErrorMessage());
     }
     return true;
-
   }
 
   // Override functions specific to this example beyond this point
@@ -237,37 +240,6 @@ public class FMICStartupExample extends BaseExample {
   public void hidDataReceived(HidServicesEvent event) {
         System.out.println("hidDataReceived: " + event);
         byte[] responseBytes = event.getDataReceived();
-  }
-
-  // BaseExample.printAsHex() prints a buffer in full regardless of whether
-  // it is mostly zero-filled.
-  // This variant replaces trailing zero bytes with '...' 
-  // (if and only if at least one trailing zero byte is present).
-  // This allows larger buffers to be used without blowing out
-  // log files with empty bytes (e.g. for the report descriptor).
-  // This variant is also suitable for use with both sent 
-  // and received data, and is controlled by an enablement variable
-  static boolean enable_printAsHex2=false;
-  public static void printAsHex2(byte[] dataSentOrReceived, String directionChar) {
-    if(enable_printAsHex2==false) {
-      return;
-    }
-    System.out.printf("%s [%02x]:", directionChar, dataSentOrReceived.length);
-    int trailingZeroByteCount = -1; // -1 signifies 'no non-zero bytes seen yet'
-    for (int i=dataSentOrReceived.length-1; i>0; --i) {
-      if (dataSentOrReceived[i]!=0) {
-        trailingZeroByteCount = dataSentOrReceived.length - i - 1;
-        break;
-      }
-    }
-    for (int i=0; i<dataSentOrReceived.length; ++i) {
-      System.out.printf(" %02x", dataSentOrReceived[i]);
-      if (dataSentOrReceived.length-i==trailingZeroByteCount) {
-        System.out.printf(" ...");
-        break;
-      }
-    }
-    System.out.println();
   }
 
   private int sendCommand(String commandBytesHex, String commandDescription) {
@@ -308,7 +280,59 @@ public class FMICStartupExample extends BaseExample {
     }
   
     */        
+
+  // BaseExample.printAsHex() prints a buffer in full regardless of whether
+  // it is mostly zero-filled.
+  // This variant replaces trailing zero bytes with '...' 
+  // (if and only if at least one trailing zero byte is present).
+  // This allows larger buffers to be used without blowing out
+  // log files with empty bytes (e.g. for the report descriptor).
+  // This variant is also suitable for use with both sent 
+  // and received data, and is controlled by an enablement variable
+  static boolean enable_printAsHex2=false;
+  public static void printAsHex2(byte[] dataSentOrReceived, String directionChar) {
+    if(enable_printAsHex2==false) {
+      return;
+    }
+    System.out.printf("%s [%02x]:", directionChar, dataSentOrReceived.length);
+    int trailingZeroByteCount = -1; // -1 signifies 'no non-zero bytes seen yet'
+    for (int i=dataSentOrReceived.length-1; i>0; --i) {
+      if (dataSentOrReceived[i]!=0) {
+        trailingZeroByteCount = dataSentOrReceived.length - i - 1;
+        break;
+      }
+    }
+    for (int i=0; i<dataSentOrReceived.length; ++i) {
+      System.out.printf(" %02x", dataSentOrReceived[i]);
+      if (dataSentOrReceived.length-i==trailingZeroByteCount) {
+        System.out.printf(" ...");
+        break;
+      }
+    }
+    System.out.println();
+  }
+
 }
+
+class FMICDevice {
+  HidDevice m_hidDevice;
+  ArrayList<String> m_presetJsonDefinitions;
+
+  FMICDevice(HidDevice hidDevice) {
+    m_hidDevice = hidDevice;
+    m_presetJsonDefinitions = new ArrayList<>();
+  }
+
+  static String displayName(String jsonDefinitionText) {
+    String name = FMICProtocolBase.getStringAttribute(jsonDefinitionText,"displayName");
+    if (name==null) {
+      name = "_name_not_found_";
+    }
+    return name;
+  }
+}
+
+
 
 abstract class FMICProtocolBase {
 
@@ -343,6 +367,31 @@ abstract class FMICProtocolBase {
     protected static void log(String message) {
         System.out.println(message);
   }
+
+  public static String getStringAttribute(
+    String jsonDefinitionText, String attributeName
+  ) {
+    Pattern attrDefinitionPattern = Pattern.compile(
+      String.format("\"%s\":\\s*\"([^\"]*)\"", attributeName)
+    );
+    Matcher m = attrDefinitionPattern.matcher(jsonDefinitionText);
+
+    if (m.find()) {
+      assert m.groupCount() == 1;
+      return m.group(1);
+    } else {
+      return null;
+    }
+  }
+
+  protected static String displayName(String jsonDefinitionText) {
+      String name = getStringAttribute(jsonDefinitionText,"displayName");
+      if(name==null) {
+        name = "_name_not_found_";
+      }
+      return name;
+  }
+
 }
 
 class LTSeriesProtocol extends FMICProtocolBase {
@@ -513,7 +562,7 @@ class LTSeriesProtocol extends FMICProtocolBase {
       );
       int presetIndex=assembledResponseMessage[assembledResponseMessage.length-1];
       // System.out.println(jsonDefinition);
-      String presetExtendedName = FMICDevice.extendedName(jsonDefinition);
+      String presetExtendedName = FMICDevice.displayName(jsonDefinition);
       System.out.println(String.format(
           "Preset %d: %s",presetIndex,presetExtendedName
       ));
@@ -530,58 +579,4 @@ class LTSeriesProtocol extends FMICProtocolBase {
     return sendCommand(commandHexBytes,commandDescription);
   }  
 }
-
-class FMICDevice {
-  HidDevice m_hidDevice;
-  ArrayList<String> m_presetJsonDefinitions;
-
-  FMICDevice(HidDevice hidDevice) {
-    m_hidDevice = hidDevice;
-    m_presetJsonDefinitions = new ArrayList<>();
-  }
-
-  void addPreset(int index, String jsonDefinition) {
-    String presetExtendedName = extendedName(jsonDefinition);
-    System.out.println(String.format(
-      "Adding preset #%03d %s", index, presetExtendedName
-    ));
-    m_presetJsonDefinitions.add(index,jsonDefinition);
-  }
-
-  static String getStringAttribute(
-    String jsonDefinitionText, String attributeName
-    ) {
-      Pattern attrDefinitionPattern = Pattern.compile(
-        String.format("\"%s\":\\s*\"([^\"]*)\"", attributeName)
-      );
-      Matcher m = attrDefinitionPattern.matcher(jsonDefinitionText);
-
-      if (m.find()) {
-        assert m.groupCount() == 1;
-        return m.group(1);
-      } else {
-        return null;
-      }
-  }
-
-  static String extendedName(String jsonDefinitionText) {
-    String name = getStringAttribute(jsonDefinitionText,"displayName");
-    if(name==null) {
-      System.out.println("No name found in: " + jsonDefinitionText);
-      name = "_noname_";
-    }
-    try {
-      String hash = Base64.getUrlEncoder().encodeToString(
-        MessageDigest.getInstance("SHA-256").digest(
-          jsonDefinitionText.getBytes(StandardCharsets.UTF_8)
-        )
-      ).substring(0,7);
-      return name.replace(" ","_")  + "-" + hash;
-    }
-    catch (NoSuchAlgorithmException e) {
-      return name.replace(" ","_") ;
-    }
-  }
-}
-
 
