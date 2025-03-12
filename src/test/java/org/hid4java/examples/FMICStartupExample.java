@@ -49,6 +49,7 @@ import org.hid4java.HidManager;
 import org.hid4java.HidServices;
 import org.hid4java.HidServicesListener;
 import org.hid4java.HidServicesSpecification;
+import org.hid4java.ScanMode;
 import org.hid4java.event.HidServicesEvent;
 import org.hid4java.jna.HidApi;
 
@@ -105,7 +106,15 @@ public class FMICStartupExample extends BaseExample {
 
     // Responses will be read synchronously
     hidServicesSpecification.setAutoDataRead(false);
-    hidServicesSpecification.setDataReadInterval(500);
+
+    // Dump parameters which are default-initialized
+    ScanMode sm = hidServicesSpecification.getScanMode();
+    int si = hidServicesSpecification.getScanInterval();
+    int dri = hidServicesSpecification.getDataReadInterval();
+    int pi = hidServicesSpecification.getPauseInterval();
+    System.out.println(String.format(
+      "sm=%s si=%d dri=%d pi=%d", sm, si, dri, pi
+    ));
 
     // Get HID services using custom specification
     HidServices hidServices = HidManager.getHidServices(hidServicesSpecification);
@@ -123,61 +132,80 @@ public class FMICStartupExample extends BaseExample {
         continue;
       }
       if (hidDevice.getUsage() == 0x01 && hidDevice.getUsagePage() == 0xffffff00) {
-        System.out.println("Using FMIC device: " + hidDevice.getPath());
         fmicDevice = hidDevice;
         break;
       }
-    }
-
-    int productId = fmicDevice.getProductId();
-    if (productId==0x0046) {
-      // Mustang LT40S - tested with firmware 1.0.7
-      System.out.println(
-        String.format("Connected FMIC device is %s, expected to work providing firmware is version 1.0.7",fmicDevice.getProduct())
-      );
-    } else if(productId>=0x0037 && productId<0x0046) {
-      // See incomplete list of VID/PIDs for Mustang products at 
-      // https://github.com/offa/plug/blob/master/doc/USB.md
-      // This range appears to be where the LT-series devices lie historically.    
-            System.out.println(String.format(
-                "Connected FMIC device is %s, probably LT series but not tested, may or may not work",
-                fmicDevice.getProduct()
-            ));
-    } else {
-            System.out.println(String.format(
-                "Connected FMIC device is %s, outside VID range for LT series, not expected to work",
-                fmicDevice.getProduct()
-            ));
-      fmicDevice = null;
     }
 
     if (fmicDevice == null) {
       // Shut down and rely on auto-shutdown hook to clear HidApi resources
       System.out.println("No relevant devices attached.");
     } else {
-
-      // Open the device
-      if (fmicDevice.isClosed()) {
-        System.out.println("Need to open device.");
-        if (!fmicDevice.open()) {
-          throw new IllegalStateException("Unable to open device.");
-        }
-        System.out.println("Device opened.");
+      int productId = fmicDevice.getProductId();
+      System.out.println(String.format(
+        "Using FMIC device with VID/PID=%04x:%04x product='%s' serial#=%s release=%d path=%s",
+        fmicDevice.getVendorId(), productId, fmicDevice.getProduct(),
+        fmicDevice.getSerialNumber(), fmicDevice.getReleaseNumber(), fmicDevice.getPath()
+      ));
+      if (productId==0x0046) {
+        // Mustang LT40S - tested with firmware 1.0.7
+        System.out.println("Mustang LT40S - tested with firmware 1.0.7 - expected to work");
+      } else if (productId==0x0046) {
+        // Original Mustang Micro - with 2024/2025 firmware this does not enumerate as an 
+        // HID Device - including it here in the distant hope that a future firmware might
+        System.out.println("Original Mustang Micro - not expected to be detected via USB HID");                
+      } else if (productId==0x003a) {
+        // Mustang Micro Plus - with 2024/2025 firmware this does not enumerate as an 
+        // HID Device - including it here in the distant hope that a future firmware might
+        System.out.println("Mustang Micro Plus - not expected to be detected via USB HID (but might work with BLE HID over GATT)");                
+      } else if(productId>=0x0037 && productId<0x0046) {
+        // See incomplete list of VID/PIDs for Mustang products at 
+        // https://github.com/offa/plug/blob/master/doc/USB.md
+        // This range appears to be where the LT-series devices lie historically.    
+        System.out.println("Probably LT series device - not tested - may or may not work");
       } else {
-        System.out.println("No need to open device because it is already open.");
+        System.out.println(
+          "Outside PID range for LT series - not tested - disabled because not expected to work"
+        );
+        // TODO?: Consider implementing a CLI switch for 'have a go anyway'
+        fmicDevice = null;
       }
 
-      // Perform a USB ReportDescriptor operation to determine general device capabilities
-      // Reports can be up to 4096 bytes for complex devices.
-      // Probably won't need this but allocate max capacity anyway.
-      byte[] reportDescriptor = new byte[4096];
-      if (fmicDevice.getReportDescriptor(reportDescriptor) > 0) {
-        System.out.println("FMIC device report descriptor: " + fmicDevice.getPath());
-        printAsHex2(reportDescriptor,"<");
-      }
+      if (fmicDevice == null) {
+        // Shut down and rely on auto-shutdown hook to clear HidApi resources
+        System.out.println("No relevant devices attached.");
+      } else {
+        // Open the device
+        System.out.println("FMIC device error: " + fmicDevice.getLastErrorMessage());
+        if (fmicDevice.isClosed()) {
+          System.out.println("FMIC device error: " + fmicDevice.getLastErrorMessage());
+          if (!fmicDevice.open()) {
+            System.out.println("FMIC device error: " + fmicDevice.getLastErrorMessage());
+            throw new IllegalStateException("Unable to open device.");
+          }
+        }
 
-      // Initialise the Fender Mustang/Rumble device
-      handleInitialise(fmicDevice);
+        // Perform a USB ReportDescriptor operation to determine general device capabilities
+        // Reports can be up to 4096 bytes for complex devices.
+        // Probably won't need this but allocate max capacity anyway.
+        byte[] reportDescriptor = new byte[4096];
+        if (fmicDevice.getReportDescriptor(reportDescriptor) > 0) {
+          // There is an online HTML/JS tool written by Frank Zao which can 
+          // parse USB HID report descriptor.
+          // https://eleccelerator.com/usbdescreqparser/
+          // I'm not yet sure whether there is anything useful to us here.
+          // This Git repo contains a reference copy of the tool in 
+          // the assets directory in case the original URL gets bit-rot.
+          boolean e_pah2_prev_state = enable_printAsHex2;
+          enable_printAsHex2 = true;
+          System.out.println("FMIC device report descriptor: ");
+          printAsHex2(reportDescriptor,"<");
+          enable_printAsHex2 = e_pah2_prev_state;
+        }
+
+        // Initialise the Fender Mustang/Rumble device
+        handleInitialise(fmicDevice);
+      }
     }
 
     hidServices.stop();
@@ -197,7 +225,9 @@ public class FMICStartupExample extends BaseExample {
     System.out.println("doStartup returned " + startupStatus);
     int presetNamesStatus = protocol.getPresetNamesList();
     System.out.println("getPresetNamesList returned " + presetNamesStatus);
-    System.out.println("Last error: " + hidDevice.getLastErrorMessage());
+    if(presetNamesStatus!=0) {
+      System.out.println("Last error: " + hidDevice.getLastErrorMessage());
+    }
     return true;
 
   }
@@ -247,12 +277,12 @@ public class FMICStartupExample extends BaseExample {
 
     @Override
     public void hidDeviceAttached(HidServicesEvent event) {
-        System.out.println("hidDeviceAttached: " + event);
+        //System.out.println("hidDeviceAttached: " + event);
     }
 
     @Override
     public void hidDeviceDetached(HidServicesEvent event) {
-        System.out.println("hidDeviceDetached: " + event);
+        //System.out.println("hidDeviceDetached: " + event);
     }
 
     @Override
@@ -276,11 +306,7 @@ public class FMICStartupExample extends BaseExample {
     public void sendCommand(String commandHexString) { 
         System.out.println("sendCommand! (unexpected)");
     }
-    
-    @Override
-    public void expectReports(Pattern[] reportHexStringPatterns) {
-
-    }
+  
     */        
 }
 
