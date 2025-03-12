@@ -205,11 +205,8 @@ public class FMICStartupExample extends BaseExample {
   // Override functions specific to this example beyond this point
   @Override
   public void hidDataReceived(HidServicesEvent event) {
-    // super.hidDataReceived(event);
-
-    // Analyse the response
-    byte[] initialiseResponse = event.getDataReceived();
-    printAsHex2(initialiseResponse,"<");
+        System.out.println("hidDataReceived: " + event);
+        byte[] responseBytes = event.getDataReceived();
   }
 
   // BaseExample.printAsHex() prints a buffer in full regardless of whether
@@ -242,6 +239,49 @@ public class FMICStartupExample extends BaseExample {
     }
     System.out.println();
   }
+
+  private int sendCommand(String commandBytesHex, String commandDescription) {
+    return 0;
+  }    
+
+
+    @Override
+    public void hidDeviceAttached(HidServicesEvent event) {
+        System.out.println("hidDeviceAttached: " + event);
+    }
+
+    @Override
+    public void hidDeviceDetached(HidServicesEvent event) {
+        System.out.println("hidDeviceDetached: " + event);
+    }
+
+    @Override
+    public void hidFailure(HidServicesEvent event) {
+        System.out.println("hidFailure: " + event);
+    }
+
+    /*
+    @Override
+    public PresetInfo getPresetInfo(PresetInfo requestedPresets) {
+        return null;
+    }
+
+    @Override
+    public boolean connect() {
+        System.out.println("Connect! (unexpected)");
+        return true; 
+    }
+
+    @Override
+    public void sendCommand(String commandHexString) { 
+        System.out.println("sendCommand! (unexpected)");
+    }
+    
+    @Override
+    public void expectReports(Pattern[] reportHexStringPatterns) {
+
+    }
+    */        
 }
 
 abstract class FMICProtocolBase {
@@ -310,7 +350,7 @@ class LTSeriesProtocol extends FMICProtocolBase {
       } else if(packetBytesRead!=64) {
         log("read incomplete, error=" + m_device.getLastErrorMessage());
         return STATUS_READ_FAIL;
-      } else {
+      } /* else */ {
         FMICStartupExample.printAsHex2(packetBuffer,">");
       }
       assert packetBuffer[0] == 0x00;
@@ -320,17 +360,17 @@ class LTSeriesProtocol extends FMICProtocolBase {
       switch(packetBuffer[1]) {
         case 0x33: // first packet
           assert assemblyBufferOffset == 0;
-          assert contentLength == 0x3c;
+          assert contentLength == 0x3d;
           messageComplete = false;
         break;
 
         case 0x34: // middle packet
-          assert contentLength == 0x3c;
+          assert contentLength == 0x3d;
           messageComplete = false;
         break;
 
         case 0x35:
-          assert contentLength <= 0x3c;
+          assert contentLength <= 0x3d;
           messageComplete = true;
         break;
 
@@ -360,7 +400,6 @@ class LTSeriesProtocol extends FMICProtocolBase {
       if (psJsonStatus!=STATUS_OK) {
         return psJsonStatus;
       }
-      log(presetJsonSB.toString());
     }
     return STATUS_OK;
   }
@@ -368,7 +407,7 @@ class LTSeriesProtocol extends FMICProtocolBase {
   private int sendCommand(String commandBytesHex, String commandDescription) {
     byte[] commandBytes = new byte[64];
     colonSeparatedHexToByteArray(commandBytesHex, commandBytes);
-    log( "Sending " + commandDescription);
+    // log( "Sending " + commandDescription);
     FMICStartupExample.printAsHex2(commandBytes,"<");
     int bytesWritten = m_device.write(commandBytes, 64, (byte) 0x00, true);
     if (bytesWritten < 0) {
@@ -436,7 +475,7 @@ class LTSeriesProtocol extends FMICProtocolBase {
       // varint, which it always is).
 
       // byte 6 is protobuf tag+type for the JSON definition field
-      assert 0x0a == assembledResponseMessage[5];       
+      assert 0x0a == assembledResponseMessage[6];       
 
       // bytes 7 and 8 are a varint giving the length of the JSON field
       // (again, this field is always long enough to require two bytes)
@@ -450,7 +489,7 @@ class LTSeriesProtocol extends FMICProtocolBase {
       // System.out.println(jsonDefinition);
       String presetExtendedName = FMICDevice.extendedName(jsonDefinition);
       System.out.println(String.format(
-        "Preset %s at index %d",presetExtendedName,presetIndex
+          "Preset %d: %s",presetIndex,presetExtendedName
       ));
     }
 
