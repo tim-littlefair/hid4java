@@ -99,6 +99,11 @@ public class FMICStartupExample extends BaseExample {
     example.startProvider();
   }
 
+  static boolean enable_printAsHex2=false;
+  public static void printAsHex2(byte[] dataSentOrReceived, String directionChar) {
+	  FMICProtocolBase.printAsHex2(dataSentOrReceived, directionChar);
+  }
+
   private void startProvider() {
 
     // Demonstrate low level traffic logging
@@ -216,8 +221,6 @@ public class FMICStartupExample extends BaseExample {
     hidServices.shutdown();
   }
 
-
-
   /**
    * @param hidDevice The device to use
    * @return True if the device is now initialised for use
@@ -225,195 +228,199 @@ public class FMICStartupExample extends BaseExample {
   private boolean handleInitialise(HidDevice hidDevice) {
     PresetRegistryBase presetRegistry = new PresetRegistryBase();    
     FMICProtocolBase protocol = new LTSeriesProtocol(new UsbHidDevice(hidDevice), presetRegistry);
-        int startupStatus = protocol.doStartup();    
-        System.out.println("Retrieving presets - should take < 5 seconds");
-        int presetNamesStatus = protocol.getPresetNamesList();
-        if(startupStatus!=0 || presetNamesStatus!=0) {
-          System.out.println("doStartup returned " + startupStatus);
-          System.out.println("getPresetNamesList returned " + presetNamesStatus);
-          System.out.println("Last error: " + hidDevice.getLastErrorMessage());
-          return false;
-        } else {
-          System.out.println("");
-          presetRegistry.acceptVisitor(new PresetNameListGenerator());
-        }
-        return true;
-      }
-    
-      // Override functions specific to this example beyond this point
-      @Override
-      public void hidDataReceived(HidServicesEvent event) {
-            System.out.println("hidDataReceived: " + event);
-            byte[] responseBytes = event.getDataReceived();
-      }
-    
-      private int sendCommand(String commandBytesHex, String commandDescription) {
-        return 0;
-      }    
-    
-    
-        @Override
-        public void hidDeviceAttached(HidServicesEvent event) {
-            //System.out.println("hidDeviceAttached: " + event);
-        }
-    
-        @Override
-        public void hidDeviceDetached(HidServicesEvent event) {
-            //System.out.println("hidDeviceDetached: " + event);
-        }
-    
-        @Override
-        public void hidFailure(HidServicesEvent event) {
-            System.out.println("hidFailure: " + event);
-        }
-    
-        /*
-        @Override
-        public PresetInfo getPresetInfo(PresetInfo requestedPresets) {
-            return null;
-        }
-    
-        @Override
-        public boolean connect() {
-            System.out.println("Connect! (unexpected)");
-            return true; 
-        }
-    
-        @Override
-        public void sendCommand(String commandHexString) { 
-            System.out.println("sendCommand! (unexpected)");
-        }
-      
-        */        
-    
-      // BaseExample.printAsHex() prints a buffer in full regardless of whether
-      // it is mostly zero-filled.
-      // This variant replaces trailing zero bytes with '...' 
-      // (if and only if at least one trailing zero byte is present).
-      // This allows larger buffers to be used without blowing out
-      // log files with empty bytes (e.g. for the report descriptor).
-      // This variant is also suitable for use with both sent 
-      // and received data, and is controlled by an enablement variable
-      static boolean enable_printAsHex2=false;
-      public static void printAsHex2(byte[] dataSentOrReceived, String directionChar) {
-        if(enable_printAsHex2==false) {
-          return;
-        }
-        System.out.printf("%s [%02x]:", directionChar, dataSentOrReceived.length);
-        int trailingZeroByteCount = -1; // -1 signifies 'no non-zero bytes seen yet'
-        for (int i=dataSentOrReceived.length-1; i>0; --i) {
-          if (dataSentOrReceived[i]!=0) {
-            trailingZeroByteCount = dataSentOrReceived.length - i - 1;
-            break;
-          }
-        }
-        for (int i=0; i<dataSentOrReceived.length; ++i) {
-          System.out.printf(" %02x", dataSentOrReceived[i]);
-          if (dataSentOrReceived.length-i==trailingZeroByteCount) {
-            System.out.printf(" ...");
-            break;
-          }
-        }
-        System.out.println();
-      }
-    
+    int startupStatus = protocol.doStartup();    
+    System.out.println("Retrieving presets - should take < 5 seconds");
+    int presetNamesStatus = protocol.getPresetNamesList();
+    if(startupStatus!=0 || presetNamesStatus!=0) {
+      System.out.println("doStartup returned " + startupStatus);
+      System.out.println("getPresetNamesList returned " + presetNamesStatus);
+      System.out.println("Last error: " + hidDevice.getLastErrorMessage());
+      return false;
+    } else {
+      System.out.println("");
+      presetRegistry.acceptVisitor(new PresetNameListGenerator());
     }
-    
-    class FMICDevice {
-      HidDevice m_hidDevice;
-      ArrayList<String> m_presetJsonDefinitions;
-    
-      FMICDevice(HidDevice hidDevice) {
-        m_hidDevice = hidDevice;
-        m_presetJsonDefinitions = new ArrayList<>();
-      }
-    
-      static String displayName(String jsonDefinitionText) {
-        String name = FMICProtocolBase.getStringAttribute(jsonDefinitionText,"displayName");
-        if (name==null) {
-          name = "_name_not_found_";
-        }
-        return name;
-      }
-    }
-    
-    interface ProtocolDeviceInterface {
+    return true;
+  }
 
-      int read(byte[] packetBuffer, int i);
-  
-      String getLastErrorMessage();
-  
-      int write(byte[] commandBytes, int i, byte b, boolean b1);
+  // Override functions specific to this example beyond this point
+  @Override
+  public void hidDataReceived(HidServicesEvent event) {
+    System.out.println("hidDataReceived: " + event);
+    byte[] responseBytes = event.getDataReceived();
+  }
+
+  private int sendCommand(String commandBytesHex, String commandDescription) {
+    return 0;
+  }    
+    
+  @Override
+  public void hidDeviceAttached(HidServicesEvent event) {
+      //System.out.println("hidDeviceAttached: " + event);
+  }
+
+  @Override
+  public void hidDeviceDetached(HidServicesEvent event) {
+      //System.out.println("hidDeviceDetached: " + event);
+  }
+
+  @Override
+  public void hidFailure(HidServicesEvent event) {
+      System.out.println("hidFailure: " + event);
+  }
+
+  /*
+  @Override
+  public PresetInfo getPresetInfo(PresetInfo requestedPresets) {
+      return null;
+  }
+
+  @Override
+  public boolean connect() {
+      System.out.println("Connect! (unexpected)");
+      return true; 
+  }
+
+  @Override
+  public void sendCommand(String commandHexString) { 
+      System.out.println("sendCommand! (unexpected)");
+  }
+
+  */        
+}
+
+class UsbHidDevice implements ProtocolDeviceInterface {
+  final HidDevice m_hidDevice;
+  UsbHidDevice(HidDevice hidDevice) {
+    m_hidDevice = hidDevice;
+  }
+
+  @Override
+  public int read(byte[] packetBuffer, int i) { return m_hidDevice.read(packetBuffer,i); }
+
+  @Override
+  public String getLastErrorMessage() {
+    return m_hidDevice.getLastErrorMessage();
+  }
+
+  @Override
+  public int write(byte[] commandBytes, int i, byte b, boolean b1) {
+      return m_hidDevice.write(commandBytes, i, b, b1);
+  }
+}
+    
+    
+interface ProtocolDeviceInterface {
+
+  int read(byte[] packetBuffer, int i);
+
+  String getLastErrorMessage();
+
+  int write(byte[] commandBytes, int i, byte b, boolean b1);
+}
+
+abstract class FMICProtocolBase {
+    
+  // This function is based on upstream hid4java's BaseExample.printAsHex()
+  // The original prints a buffer in full regardless of whether
+  // it is mostly zero-filled.
+  // This variant replaces trailing zero bytes with '...'
+  // (if and only if at least one trailing zero byte is present).
+  // This allows larger buffers to be used without blowing out
+  // log files with empty bytes (e.g. for the report descriptor).
+  // This variant is also suitable for use with both sent
+  // and received data, and is controlled by an enablement variable
+  static boolean enable_printAsHex2=false;
+  final int STATUS_OK = 0;
+    
+  final int STATUS_WRITE_FAIL = -101;
+  final int STATUS_READ_FAIL = -102;
+  final int STATUS_REASSEMBLY_FAIL = -103;
+  final int STATUS_PARSE_FAIL = -104;
+  final int STATUS_PRESET_FAIL = -105;
+  final int STATUS_OTHER_FAIL = -109;
+    
+  final int STATUS_PRESET_WRAP_WARN = 201;
+    
+  protected ProtocolDeviceInterface m_device;
+
+  protected FMICProtocolBase(ProtocolDeviceInterface device) {
+    m_device = device;
+  }
+
+  abstract int doStartup();
+
+  abstract int getPresetNamesList();
+
+  protected static void log(String message) {
+    System.out.println(message);
+  }
+
+  static void colonSeparatedHexToByteArray(String colonSeparatedHex, byte[] byteArray) {
+    String byteHexArray[] = colonSeparatedHex.split(":");
+    assert byteArray.length >= byteHexArray.length;
+    for (int i = 0; i < byteHexArray.length; ++i) {
+      byteArray[i] = (byte) Integer.parseInt(byteHexArray[i], 16);
     }
-    
-    abstract class FMICProtocolBase {
-    
-      public final int STATUS_OK = 0;
-    
-      public final int STATUS_WRITE_FAIL = -101;
-      public final int STATUS_READ_FAIL = -102;
-      public final int STATUS_REASSEMBLY_FAIL = -103;
-      public final int STATUS_PARSE_FAIL = -104;
-      public final int STATUS_PRESET_FAIL = -105;
-      public final int STATUS_OTHER_FAIL = -109;
-    
-      public final int STATUS_PRESET_WRAP_WARN = 201;
-    
-      protected final ProtocolDeviceInterface m_device;
-    
-      protected FMICProtocolBase(ProtocolDeviceInterface device) {
-        m_device = device;
+  }
+  static void printAsHex2(byte[] dataSentOrReceived, String directionChar) {
+    if(enable_printAsHex2==false) {
+      return;
+    }
+    System.out.printf("%s [%02x]:", directionChar, dataSentOrReceived.length);
+    int trailingZeroByteCount = -1; // -1 signifies 'no non-zero bytes seen yet'
+    for (int i=dataSentOrReceived.length-1; i>0; --i) {
+      if (dataSentOrReceived[i]!=0) {
+        trailingZeroByteCount = dataSentOrReceived.length - i - 1;
+        break;
       }
+    }
+    for (int i=0; i<dataSentOrReceived.length; ++i) {
+      System.out.printf(" %02x", dataSentOrReceived[i]);
+      if (dataSentOrReceived.length-i==trailingZeroByteCount) {
+        System.out.printf(" ...");
+        break;
+      }
+    }
+    System.out.println();
+  }
+
       
-      public abstract int doStartup();
-      public abstract int getPresetNamesList();
-    
-      public static void colonSeparatedHexToByteArray(String colonSeparatedHex, byte[] byteArray) {
-        String byteHexArray[] = colonSeparatedHex.split(":");
-        assert byteArray.length>=byteHexArray.length;
-        for(int i=0; i<byteHexArray.length; ++i) {
-           byteArray[i] = (byte) Integer.parseInt(byteHexArray[i],16);
-        }
-      }
-    
-        protected static void log(String message) {
-            System.out.println(message);
-      }
-    
-      public static String getStringAttribute(
-        String jsonDefinitionText, String attributeName
-      ) {
-        Pattern attrDefinitionPattern = Pattern.compile(
-          String.format("\"%s\":[ ]*\"([^\"]*)\"", attributeName)
-        );
-        Matcher m = attrDefinitionPattern.matcher(jsonDefinitionText);
-    
-        if (m.find()) {
-          assert m.groupCount() == 1;
-          return m.group(1);
-        } else {
-          return null;
-        }
-      }
-    
-      protected static String displayName(String jsonDefinitionText) {
-          String name = getStringAttribute(jsonDefinitionText,"displayName");
-          if(name==null) {
-            name = "_name_not_found_";
-          }
-          return name;
-      }
-    
+
+  static String getStringAttribute(
+    String jsonDefinitionText, String attributeName
+  ) {
+    Pattern attrDefinitionPattern = Pattern.compile(
+      String.format("\"%s\":[ ]*\"([^\"]*)\"", attributeName)
+    );
+    Matcher m = attrDefinitionPattern.matcher(jsonDefinitionText);
+
+    if (m.find()) {
+      assert m.groupCount() == 1;
+      return m.group(1);
+    } else {
+      return null;
     }
-    
-    class LTSeriesProtocol extends FMICProtocolBase {
-      PresetRegistryBase m_presetRegistry;
-      public LTSeriesProtocol(UsbHidDevice device, PresetRegistryBase presetRegistry) {
-        super(device);
-        m_presetRegistry = presetRegistry;
+  }
+
+  protected static String displayName(String jsonDefinitionText) {
+      String name = getStringAttribute(jsonDefinitionText,"displayName");
+      if(name==null) {
+        name = "_name_not_found_";
       }
-        
-      public int doStartup() {
+      return name;
+  }
+
+}
+    
+  class LTSeriesProtocol extends FMICProtocolBase {
+    PresetRegistryBase m_presetRegistry;
+  LTSeriesProtocol(ProtocolDeviceInterface device, PresetRegistryBase presetRegistry) {
+      super(device);
+      m_presetRegistry = presetRegistry;
+    }
+      
+  int doStartup() {
     String[][] startupCommands = new String[][]{
       new String[] { "35:09:08:00:8a:07:04:08:00:10", "initialisation request"}, 
       new String[] { "35:07:08:00:b2:06:02:08:01:00:10", "firmware version request"}, 
@@ -433,15 +440,17 @@ public class FMICStartupExample extends BaseExample {
     int assemblyBufferOffset=0;
     while (true) {
       byte[] packetBuffer = new byte[64];
-      int packetBytesRead = m_device.read(packetBuffer,500);
+      int packetBytesRead;
+      packetBytesRead = m_device.read(packetBuffer, 500);
       if (packetBytesRead < 0) {
         log("read failed, error=" + m_device.getLastErrorMessage());
         return STATUS_READ_FAIL;
       } else if(packetBytesRead!=64) {
         log("read incomplete, error=" + m_device.getLastErrorMessage());
         return STATUS_READ_FAIL;
-      } /* else */ {
-        FMICStartupExample.printAsHex2(packetBuffer,">");
+      } /* else */
+      {
+        printAsHex2(packetBuffer, ">");
       }
       assert packetBuffer[0] == 0x00;
       int packetContentStart = 3;
@@ -477,13 +486,13 @@ public class FMICStartupExample extends BaseExample {
 
     // Dump the reassembled message with a distinctive direction character
     byte[] reassembledMessage = Arrays.copyOfRange(assemblyBuffer,0,assemblyBufferOffset);
-    FMICStartupExample.printAsHex2(reassembledMessage,"+>");
+    printAsHex2(reassembledMessage, "+>");
     parseResponse(reassembledMessage);
     return STATUS_OK;
   }
 
   @Override
-  public int getPresetNamesList() {
+  int getPresetNamesList() {
     for(int i=1; i<=60; ++i) {
       StringBuilder presetJsonSB = new StringBuilder();
       int psJsonStatus = getPresetJson(i, presetJsonSB);
@@ -498,7 +507,7 @@ public class FMICStartupExample extends BaseExample {
     byte[] commandBytes = new byte[64];
     colonSeparatedHexToByteArray(commandBytesHex, commandBytes);
     // log( "Sending " + commandDescription);
-    FMICStartupExample.printAsHex2(commandBytes,"<");
+    printAsHex2(commandBytes, "<");
     int bytesWritten = m_device.write(commandBytes, 64, (byte) 0x00, true);
     if (bytesWritten < 0) {
       log(m_device.getLastErrorMessage());
@@ -577,7 +586,7 @@ public class FMICStartupExample extends BaseExample {
       );
       int presetIndex=assembledResponseMessage[assembledResponseMessage.length-1];
       // System.out.println(jsonDefinition);
-      String presetExtendedName = FMICDevice.displayName(jsonDefinition);
+      String presetExtendedName = FMICProtocolBase.displayName(jsonDefinition);
       m_presetRegistry.register(presetIndex, new PresetRecordBase(presetExtendedName));
     }
 
@@ -603,16 +612,16 @@ public class FMICStartupExample extends BaseExample {
 class PresetRegistryBase {
     HashMap<Integer, PresetRecordBase> m_records;
 
-    PresetRegistryBase() {
+  public PresetRegistryBase() {
         m_records = new HashMap<>();
     }
 
-    void register(int slotIndex, PresetRecordBase presetRecord) {
+  public void register(int slotIndex, PresetRecordBase presetRecord) {
         assert slotIndex>0;
         m_records.put(slotIndex, presetRecord);
     }
 
-    void acceptVisitor(PresetRegistryVisitor visitor) {
+  public void acceptVisitor(PresetRegistryVisitor visitor) {
         visitor.visit(this);
         for(int i=1; i< m_records.size(); ++i) {
             PresetRecordBase record = m_records.get(i);
@@ -625,7 +634,7 @@ class PresetRegistryBase {
 
 class PresetRecordBase {
   String m_name;
-  PresetRecordBase(String name) {
+  public PresetRecordBase(String name) {
       m_name = name;
   }
 }
@@ -651,19 +660,21 @@ class PresetNameListGenerator implements PresetRegistryVisitor {
   }
 }
 
-class UsbHidDevice implements ProtocolDeviceInterface {
-    final HidDevice m_hidDevice;
-    UsbHidDevice(HidDevice hidDevice) {
+    class FMICDevice {
+      HidDevice m_hidDevice;
+      ArrayList<String> m_presetJsonDefinitions;
+    
+      FMICDevice(HidDevice hidDevice) {
         m_hidDevice = hidDevice;
+        m_presetJsonDefinitions = new ArrayList<>();
+      }
+    
+      static String displayName(String jsonDefinitionText) {
+        String name = FMICProtocolBase.getStringAttribute(jsonDefinitionText,"displayName");
+        if (name==null) {
+          name = "_name_not_found_";
+        }
+        return name;
+      }
     }
 
-    public int read(byte[] packetBuffer, int i) { return m_hidDevice.read(packetBuffer,i); }
-
-    public String getLastErrorMessage() {
-        return m_hidDevice.getLastErrorMessage();
-    }
-
-    public int write(byte[] commandBytes, int i, byte b, boolean b1) {
-        return m_hidDevice.write(commandBytes, i, b, b1);
-    }
-}
