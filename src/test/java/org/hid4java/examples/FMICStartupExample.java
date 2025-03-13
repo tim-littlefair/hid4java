@@ -81,7 +81,6 @@ import org.hid4java.ScanMode;
 import org.hid4java.event.HidServicesEvent;
 import org.hid4java.jna.HidApi;
 
-
 public class FMICStartupExample extends BaseExample {
   
   public static void main(String[] args) {
@@ -180,9 +179,7 @@ public class FMICStartupExample extends BaseExample {
         System.out.println("No relevant devices attached.");
       } else {
         // Open the device
-        System.out.println("FMIC device error: " + fmicDevice.getLastErrorMessage());
         if (fmicDevice.isClosed()) {
-          System.out.println("FMIC device error: " + fmicDevice.getLastErrorMessage());
           if (!fmicDevice.open()) {
             System.out.println("FMIC device error: " + fmicDevice.getLastErrorMessage());
             throw new IllegalStateException("Unable to open device.");
@@ -223,14 +220,19 @@ public class FMICStartupExample extends BaseExample {
    * @return True if the device is now initialised for use
    */
   private boolean handleInitialise(HidDevice hidDevice) {
-    
-    FMICProtocolBase protocol = new LTSeriesProtocol(hidDevice);
-    int startupStatus = protocol.doStartup();
-    System.out.println("doStartup returned " + startupStatus);
+    PresetRegistryBase presetRegistry = new PresetRegistryBase();    
+    FMICProtocolBase protocol = new LTSeriesProtocol(hidDevice, presetRegistry);
+    int startupStatus = protocol.doStartup();    
+    System.out.println("Retrieving presets - should take < 5 seconds");
     int presetNamesStatus = protocol.getPresetNamesList();
-    System.out.println("getPresetNamesList returned " + presetNamesStatus);
-    if(presetNamesStatus!=0) {
+    if(startupStatus!=0 || presetNamesStatus!=0) {
+      System.out.println("doStartup returned " + startupStatus);
+      System.out.println("getPresetNamesList returned " + presetNamesStatus);
       System.out.println("Last error: " + hidDevice.getLastErrorMessage());
+      return false;
+    } else {
+      System.out.println("");
+      presetRegistry.acceptVisitor(new PresetNameListGenerator());
     }
     return true;
   }
@@ -395,9 +397,12 @@ abstract class FMICProtocolBase {
 }
 
 class LTSeriesProtocol extends FMICProtocolBase {
-  public LTSeriesProtocol(HidDevice device) {
+  PresetRegistryBase m_presetRegistry;
+  public LTSeriesProtocol(HidDevice device, PresetRegistryBase presetRegistry) {
     super(device);
+    m_presetRegistry = presetRegistry;
   }
+
   public int doStartup() {
     String[][] startupCommands = new String[][]{
       new String[] { "35:09:08:00:8a:07:04:08:00:10", "initialisation request"}, 
@@ -563,9 +568,7 @@ class LTSeriesProtocol extends FMICProtocolBase {
       int presetIndex=assembledResponseMessage[assembledResponseMessage.length-1];
       // System.out.println(jsonDefinition);
       String presetExtendedName = FMICDevice.displayName(jsonDefinition);
-      System.out.println(String.format(
-          "Preset %d: %s",presetIndex,presetExtendedName
-      ));
+      m_presetRegistry.register(presetIndex, new PresetRecordBase(presetExtendedName));
     }
 
     return STATUS_OK;
@@ -577,6 +580,63 @@ class LTSeriesProtocol extends FMICProtocolBase {
     String commandDescription = "request for JSON for preset " + i;
 
     return sendCommand(commandHexBytes,commandDescription);
-  }  
+  }
 }
 
+/**
+ * PresetRegistryBase is a minimal registry of presets which maintains
+ * a collection of simple preset objects which consist of a slot number
+ * and name only.
+ * Both the registry class and the simple preset objects can be extended
+ * to support more complex behaviour.
+ */
+class PresetRegistryBase {
+    HashMap<Integer, PresetRecordBase> m_records;
+
+    PresetRegistryBase() {
+        m_records = new HashMap<>();
+    }
+
+    void register(int slotIndex, PresetRecordBase presetRecord) {
+        assert slotIndex>0;
+        m_records.put(slotIndex, presetRecord);
+    }
+
+    void acceptVisitor(PresetRegistryVisitor visitor) {
+        visitor.visit(this);
+        for(int i=1; i< m_records.size(); ++i) {
+            PresetRecordBase record = m_records.get(i);
+            if(record!=null) {
+                visitor.visit(i, record);
+            }
+        }
+    }
+}
+
+class PresetRecordBase {
+  String m_name;
+  PresetRecordBase(String name) {
+      m_name = name;
+  }
+}
+
+interface PresetRegistryVisitor {
+  void visit(PresetRegistryBase registry);
+  void visit(int slotIndex, PresetRecordBase record);
+}
+
+class PresetNameListGenerator implements PresetRegistryVisitor {
+
+  @Override
+  public void visit(PresetRegistryBase registry) {
+    System.out.println("Presets");
+    System.out.println(String.format("%3s %16s","---","----------------"));
+    System.out.println(String.format("%3s %16s"," # ","      Name      "));
+    System.out.println(String.format("%3s %16s","---","----------------"));
+  }
+
+  @Override
+  public void visit(int slotIndex, PresetRecordBase record) {
+    System.out.println(String.format("%3d %16s",slotIndex,record.m_name));
+  }
+}
